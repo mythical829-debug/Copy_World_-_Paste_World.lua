@@ -7,9 +7,7 @@ local cachePath = "custom_ui_cache.png"
 local function loadTextureFromURL(url)
     if texCache[url] then return texCache[url] end
     
-    local headers = { ["User-Agent"] = "Mozilla/5.0 (Bothax Client)" }
-    local res = MakeRequest(url, "GET", headers)
-    
+    local res = MakeRequest(url, "GET")
     if not res or res.error or res.status ~= 200 then
         return nil
     end
@@ -45,6 +43,14 @@ function CustomUI.New(config)
     self.OnRender = config.OnRender or function(win) end
     self.bgUrl = config.backgroundImage
     self.bgTex = nil
+    
+    -- [PERBAIKAN]: Load gambar di background thread agar tidak bikin OnDraw lag/freeze
+    if self.bgUrl then
+        RunThread(function()
+            self.bgTex = loadTextureFromURL(self.bgUrl)
+        end)
+    end
+    
     return self
 end
 
@@ -61,10 +67,7 @@ function CustomUI:Render()
     ImGui.SetNextWindowSize(self.size[1], self.size[2], ImGui.Cond.FirstUseEver)
     ImGui.Begin(self.title, true, self.flags)
     
-    if self.bgUrl and not self.bgTex then
-        self.bgTex = loadTextureFromURL(self.bgUrl)
-    end
-    
+    -- [PERBAIKAN]: Cukup render jika bgTex sudah berhasil didownload oleh thread
     if self.bgTex then
         local p = ImGui.GetCursorScreenPos()
         local w, h = ImGui.GetWindowSize()
@@ -85,6 +88,16 @@ function CustomUI:Text(text, color)
     if color then ImGui.PushStyleColor(ImGui.Col.Text, color) end
     ImGui.Text(text)
     if color then ImGui.PopStyleColor() end
+end
+
+-- [PERBAIKAN]: Menambahkan fungsi Separator
+function CustomUI:Separator()
+    ImGui.Separator()
+end
+
+-- [PERBAIKAN]: Menambahkan fungsi SameLine
+function CustomUI:SameLine()
+    ImGui.SameLine()
 end
 
 function CustomUI:Button(label, w, h)
