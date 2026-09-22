@@ -7,7 +7,9 @@ local cachePath = "custom_ui_cache.png"
 local function loadTextureFromURL(url)
     if texCache[url] then return texCache[url] end
     
-    local res = MakeRequest(url, "GET")
+    local headers = { ["User-Agent"] = "Mozilla/5.0 (Bothax Client)" }
+    local res = MakeRequest(url, "GET", headers)
+    
     if not res or res.error or res.status ~= 200 then
         return nil
     end
