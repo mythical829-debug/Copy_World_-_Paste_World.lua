@@ -2,25 +2,27 @@ local CustomUI = {}
 CustomUI.__index = CustomUI
 
 local texCache = {}
-local pathSep = package.config:sub(1, 1)
-local tempDir = os.getenv("TEMP") or "/tmp"
-local cachePath = tempDir .. pathSep .. "custom_ui_cache.png"
+local cachePath = "custom_ui_cache.png"
 
 local function loadTextureFromURL(url)
     if texCache[url] then return texCache[url] end
-    local success, http = pcall(require, "socket.http")
-    if not success then return nil end
-    local body, code = http.request(url)
-    if code == 200 and body then
-        local f = io.open(cachePath, "wb")
-        if f then
-            f:write(body)
-            f:close()
-            local tex = ImGui.CreateTextureFromFile(cachePath)
-            if tex then
-                texCache[url] = tex
-                return tex
-            end
+    
+    local res = MakeRequest(url, "GET")
+    if not res or res.error or res.status ~= 200 then
+        return nil
+    end
+    
+    local body = res.content
+    if not body then return nil end
+    
+    local f = io.open(cachePath, "wb")
+    if f then
+        f:write(body)
+        f:close()
+        local tex = ImGui.CreateTextureFromFile(cachePath)
+        if tex then
+            texCache[url] = tex
+            return tex
         end
     end
     return nil
