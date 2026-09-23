@@ -9,7 +9,6 @@ end
 if not Vec2 and type(_G.Vec2) == "function" then Vec2 = _G.Vec2 end
 if not Vec2 and type(_G.ImVec2) == "function" then Vec2 = _G.ImVec2 end
 
--- Flag AutoResize untuk Window dan Child
 local AutoResizeFlag = 64
 if type(ImGui) == "table" and type(ImGui.WindowFlags) == "table" and ImGui.WindowFlags.AlwaysAutoResize then
     AutoResizeFlag = ImGui.WindowFlags.AlwaysAutoResize
@@ -56,8 +55,6 @@ function CustomUI.New(config)
     self.size = config.size or {520, 380}
     self.visible = config.visible ~= false
     self.opened = true
-    
-    -- FIX: Gunakan AutoResize di main window agar otomatis, hapus ukuran manual
     self.flags = config.flags or AutoResizeFlag
     
     if type(config.theme) == "string" then
@@ -300,31 +297,46 @@ function CustomUI:FeatureList(id, features)
     end
 end
 
--- Frame / Bingkai Presisi Auto-Resize
-function CustomUI:BeginFrame(title, w, h)
-    if type(ImGui.BeginChild) == "function" and Vec2 then
-        local cw = safeNum(w, 0)
-        local ch = safeNum(h, 0)
-        
-        -- FIX: Gunakan Flag AutoResize di Child agar pas dengan isi
-        local ok = pcall(ImGui.BeginChild, tostring(title), Vec2(cw, ch), true, AutoResizeFlag)
-        if not ok then
-            ok = pcall(ImGui.BeginChild, tostring(title), Vec2(cw, ch), true, 0)
-        end
-        
-        if ok then
-            self:ColoredText(tostring(title), 0xFFFF5050)
-            self:Separator()
-            self:Dummy(1, 4)
-            return true
-        end
+-- BINGKAI CUSTOM (GROUP + DRAWLIST) - AUTO RESIZE PRESISI & BORDER DALAM
+function CustomUI:BeginFrame(title)
+    if type(ImGui.BeginGroup) == "function" then
+        pcall(ImGui.BeginGroup)
     end
-    return false
+    
+    self:Dummy(8, 4)
+    self:ColoredText(tostring(title), 0xFFFF5050)
+    self:Separator()
+    self:Dummy(1, 4)
+    
+    return true
 end
 
 function CustomUI:EndFrame()
-    if type(ImGui.EndChild) == "function" then
-        pcall(ImGui.EndChild)
+    self:Dummy(8, 4)
+    
+    if type(ImGui.EndGroup) == "function" then
+        pcall(ImGui.EndGroup)
+    end
+    
+    if type(ImGui.GetWindowDrawList) == "function" and type(ImGui.GetItemRectSize) == "function" and type(ImGui.GetItemRectMin) == "function" and Vec2 then
+        local draw = ImGui.GetWindowDrawList()
+        local sz_ok, sz = pcall(ImGui.GetItemRectSize)
+        local p_ok, pos = pcall(ImGui.GetItemRectMin)
+        
+        if sz_ok and p_ok and sz and pos then
+            local w = safeNum(sz.x, 100)
+            local h = safeNum(sz.y, 50)
+            local px = safeNum(pos.x, 0)
+            local py = safeNum(pos.y, 0)
+            
+            local p_min = Vec2(px, py)
+            local p_max = Vec2(px + w, py + h)
+            
+            local ok = pcall(draw.AddRect, draw, p_min, p_max, 0xFFFF0000, 6, 15, 2.0)
+            if not ok then
+                pcall(draw.AddRect, draw, px, py, px + w, py + h, 0xFFFF0000, 6, 15, 2.0)
+            end
+        end
     end
 end
 
