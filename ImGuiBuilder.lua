@@ -9,24 +9,25 @@ end
 if not Vec2 and type(_G.Vec2) == "function" then Vec2 = _G.Vec2 end
 if not Vec2 and type(_G.ImVec2) == "function" then Vec2 = _G.ImVec2 end
 
+-- TEMA DARK: Latar Hitam, Button Abu-abu, Line Abu-abu, Tepi Merah
 CustomUI.Theme = {
-    WindowBg = 0xFF0F0F11,
-    ChildBg = 0xFF1A1A1E,
-    PopupBg = 0xFF1A1A1E,
-    TitleBg = 0xFF0F0F11,
-    TitleBgActive = 0xFF0F0F11,
-    TitleBgCollapsed = 0xFF0F0F11,
+    WindowBg = 0xFF000000,
+    ChildBg = 0xFF121212,
+    PopupBg = 0xFF121212,
+    TitleBg = 0xFF000000,
+    TitleBgActive = 0xFF000000,
+    TitleBgCollapsed = 0xFF000000,
     Text = 0xFFE0E0E0,
-    Button = 0xFF2A2A2E,
-    ButtonHovered = 0xFF3D3D42,
-    ButtonActive = 0xFF50505A,
-    FrameBg = 0xFF1A1A1E,
-    FrameBgHovered = 0xFF252529,
-    FrameBgActive = 0xFF303035,
-    Border = 0xFF2A2A2E,
+    Button = 0xFF808080,
+    ButtonHovered = 0xFFA0A0A0,
+    ButtonActive = 0xFF606060,
+    FrameBg = 0xFF1A1A1A,
+    FrameBgHovered = 0xFF2A2A2A,
+    FrameBgActive = 0xFF3A3A3A,
+    Border = 0xFFFF0000,       -- Tepi Merah
     BorderShadow = 0x00000000,
-    Separator = 0xFF2A2A2E,
-    CheckMark = 0xFF00E5FF
+    Separator = 0xFF808080,     -- Garis Line Abu-abu
+    CheckMark = 0xFF808080
 }
 
 local function num(value, fallback)
@@ -46,15 +47,15 @@ function CustomUI.New(config)
     self.title = config.title or "Custom UI"
     self.size = config.size or {520, 380}
     self.visible = config.visible ~= false
+    self.opened = true
     self.flags = config.flags or 0
     self.theme = config.theme or CustomUI.Theme
     self.OnRender = config.OnRender or function() end
-    self.activeTab = config.activeTab or "main"
-    self.animationDuration = num(config.animationDuration, 0.3)
+    self.activeTab = config.activeTab or "tab1"
+    self.animationDuration = 0.2 -- 200ms animasi muncul
     self.animation = 1
     self.lastTime = type(os.clock) == "function" and os.clock() or 0
     self.clampEnabled = config.clamp ~= false
-    self.loadingStates = {}
     self.toggleStates = {}
     self.buttonStatus = "READY"
     return self
@@ -65,9 +66,11 @@ function CustomUI:RestartAnimation()
     if type(os.clock) == "function" then self.lastTime = os.clock() end
 end
 
-function CustomUI:OpenTab(name)
-    self.activeTab = tostring(name)
-    self:RestartAnimation()
+function CustomUI:SetActiveTab(name)
+    if self.activeTab ~= name then
+        self.activeTab = tostring(name)
+        self:RestartAnimation()
+    end
 end
 
 function CustomUI:GetTab()
@@ -114,19 +117,30 @@ end
 
 function CustomUI:Begin()
     local tCount = self:PushTheme()
+    local sv = 0
+    if type(ImGui.PushStyleVar) == "function" and type(ImGui.StyleVar) == "table" then
+        if ImGui.StyleVar.WindowBorderSize and pcall(ImGui.PushStyleVar, ImGui.StyleVar.WindowBorderSize, 2) then sv = sv + 1 end
+        if ImGui.StyleVar.FrameBorderSize and pcall(ImGui.PushStyleVar, ImGui.StyleVar.FrameBorderSize, 1) then sv = sv + 1 end
+    end
     if type(ImGui.SetNextWindowSize) == "function" and Vec2 then
         pcall(ImGui.SetNextWindowSize, Vec2(num(self.size[1], 520), num(self.size[2], 380)), (ImGui.Cond and ImGui.Cond.FirstUseEver) or 1)
     elseif type(ImGui.SetNextWindowSize) == "function" then
         pcall(ImGui.SetNextWindowSize, num(self.size[1], 520), num(self.size[2], 380), 1)
     end
-    if type(ImGui.Begin) ~= "function" then self:PopTheme(tCount) return false, false, tCount end
-    local ok, opened = pcall(ImGui.Begin, self.title, true, self.flags)
-    if not ok then ok, opened = pcall(ImGui.Begin, self.title, true) end
-    return ok, opened ~= false, tCount
+    if type(ImGui.Begin) ~= "function" then 
+        if sv > 0 and type(ImGui.PopStyleVar) == "function" then pcall(ImGui.PopStyleVar, sv) end
+        self:PopTheme(tCount) 
+        return false, false, tCount, sv 
+    end
+    local ok, opened = pcall(ImGui.Begin, self.title, self.opened, self.flags)
+    if not ok then ok, opened = pcall(ImGui.Begin, self.title, self.opened) end
+    if not opened then self.opened = false end
+    return ok, opened ~= false, tCount, sv
 end
 
-function CustomUI:End(tCount)
+function CustomUI:End(tCount, sv)
     if type(ImGui.End) == "function" then pcall(ImGui.End) end
+    if sv > 0 and type(ImGui.PopStyleVar) == "function" then pcall(ImGui.PopStyleVar, sv) end
     self:PopTheme(tCount)
 end
 
@@ -149,109 +163,76 @@ function CustomUI:Dummy(w, h)
     if type(ImGui.Dummy) == "function" and Vec2 then pcall(ImGui.Dummy, Vec2(num(w, 1), num(h, 1))) end
 end
 
-local BtnStyles = {
-    {r=0, p={10,5}, b=1}, {r=4, p={12,6}, b=0}, {r=12, p={15,8}, b=0}, {r=0, p={8,4}, b=2}, {r=20, p={20,8}, b=1},
-    {r=0, p={10,5}, b=0}, {r=6, p={14,7}, b=1}, {r=10, p={10,5}, b=2}, {r=0, p={12,6}, b=1}, {r=8, p={16,6}, b=0},
-    {r=0, p={10,10}, b=1}, {r=4, p={8,8}, b=0}, {r=16, p={12,5}, b=1}, {r=0, p={6,12}, b=2}, {r=20, p={15,5}, b=0},
-    {r=2, p={10,5}, b=2}, {r=2, p={14,7}, b=0}, {r=18, p={20,10}, b=1}, {r=0, p={20,5}, b=0}, {r=10, p={10,10}, b=2},
-    {r=0, p={5,5}, b=1}, {r=4, p={18,4}, b=0}, {r=14, p={14,14}, b=0}, {r=0, p={16,8}, b=2}, {r=6, p={20,6}, b=1},
-    {r=0, p={12,12}, b=0}, {r=8, p={12,6}, b=2}, {r=20, p={10,5}, b=2}, {r=0, p={10,5}, b=0}, {r=10, p={15,7}, b=1}
-}
-
-function CustomUI:Button(label, styleIdx, width, height)
-    if type(ImGui.Button) ~= "function" then return false end
-    local idx = math.max(1, math.min(30, tonumber(styleIdx) or 1))
-    local s = BtnStyles[idx]
-    local w, h = num(width, 120), num(height, 36)
-    local sv = 0
-    
-    if type(ImGui.PushStyleVar) == "function" and type(ImGui.StyleVar) == "table" then
-        if ImGui.StyleVar.FrameRounding and pcall(ImGui.PushStyleVar, ImGui.StyleVar.FrameRounding, s.r) then sv = sv + 1 end
-        if ImGui.StyleVar.FramePadding and pcall(ImGui.PushStyleVar, ImGui.StyleVar.FramePadding, s.p[1], s.p[2]) then sv = sv + 1 end
-        if ImGui.StyleVar.FrameBorderSize and pcall(ImGui.PushStyleVar, ImGui.StyleVar.FrameBorderSize, s.b) then sv = sv + 1 end
+-- Sistem Tab (5 Tema/ Halaman Fitur)
+function CustomUI:TabBar(tabs, w, h)
+    if not self.activeTab then self.activeTab = tabs[1].id end
+    for i, tab in ipairs(tabs) do
+        local isActive = self.activeTab == tab.id
+        local c = 0
+        if type(ImGui.PushStyleColor) == "function" and type(ImGui.Col) == "table" then
+            local col = isActive and 0xFFA0A0A0 or 0xFF404040
+            local hCol = isActive and 0xFFC0C0C0 or 0xFF505050
+            if ImGui.Col.Button and pcall(ImGui.PushStyleColor, ImGui.Col.Button, col) then c = c + 1 end
+            if ImGui.Col.ButtonHovered and pcall(ImGui.PushStyleColor, ImGui.Col.ButtonHovered, hCol) then c = c + 1 end
+        end
+        
+        local ok, res = pcall(ImGui.Button, tab.label, num(w, 100), num(h, 30))
+        if not ok and Vec2 then
+            ok, res = pcall(ImGui.Button, tab.label, Vec2(num(w, 100), num(h, 30)))
+        end
+        if ok and res then
+            self:SetActiveTab(tab.id)
+        end
+        
+        if c > 0 and type(ImGui.PopStyleColor) == "function" then pcall(ImGui.PopStyleColor, c) end
+        if i < #tabs then self:SameLine() end
     end
+    self:Separator()
+end
 
+-- Animasi Geser untuk Isi UI
+function CustomUI:BeginTabContent()
+    self:Dummy(1, 5)
+    local offset = self:GetAnimationOffset(50)
+    if offset > 0.1 then
+        self:Dummy(offset, 1)
+        self:SameLine()
+    end
+end
+
+function CustomUI:EndTabContent() end
+
+function CustomUI:Button(label, w, h)
+    if type(ImGui.Button) ~= "function" then return false end
     local clicked = false
-    local ok, res = pcall(ImGui.Button, tostring(label), w, h)
+    local ok, res = pcall(ImGui.Button, tostring(label), num(w, 120), num(h, 36))
     if not ok and Vec2 then
-        ok, res = pcall(ImGui.Button, tostring(label), Vec2(w, h))
+        ok, res = pcall(ImGui.Button, tostring(label), Vec2(num(w, 120), num(h, 36)))
     end
     if ok then clicked = res == true end
-
-    if sv > 0 and type(ImGui.PopStyleVar) == "function" then pcall(ImGui.PopStyleVar, sv) end
-    if clicked then self.buttonStatus = "BUTTON " .. idx .. " CLICKED" end
     return clicked
 end
 
-local TogStyles = {
-    {on="●", off="○", r=20, onC=0xFF00E5FF, offC=0xFF505050, p={2,2}},
-    {on="[X]", off="[ ]", r=0, onC=0xFF00E5FF, offC=0xFF505050, p={6,4}},
-    {on="ON", off="OFF", r=4, onC=0xFF00FF66, offC=0xFF555555, p={10,5}},
-    {on="✓", off="×", r=4, onC=0xFF00FF66, offC=0xFFFF5555, p={8,4}},
-    {on="Enable", off="Disable", r=8, onC=0xFF00E5FF, offC=0xFF505050, p={8,5}},
-    {on=">", off="<", r=10, onC=0xFF00E5FF, offC=0xFF505050, p={10,4}},
-    {on="▲", off="▼", r=0, onC=0xFF00E5FF, offC=0xFF505050, p={8,4}},
-    {on="Start", off="Stop", r=20, onC=0xFF00FF66, offC=0xFFFF5555, p={12,6}},
-    {on="I", off="O", r=0, onC=0xFF00E5FF, offC=0xFF505050, p={10,4}},
-    {on="█", off="▒", r=0, onC=0xFF00E5FF, offC=0xFF505050, p={8,4}},
-    {on="True", off="False", r=4, onC=0xFF00FF66, offC=0xFFFF5555, p={8,5}},
-    {on=">>", off="<<", r=20, onC=0xFF00E5FF, offC=0xFF505050, p={10,4}},
-    {on="✔", off="✖", r=10, onC=0xFF00FF66, offC=0xFFFF5555, p={8,4}},
-    {on="+", off="-", r=20, onC=0xFF00E5FF, offC=0xFF505050, p={10,4}},
-    {on="YES", off="NO", r=0, onC=0xFF00FF66, offC=0xFFFF5555, p={10,5}},
-    {on="❖", off="◇", r=0, onC=0xFF00E5FF, offC=0xFF505050, p={8,4}},
-    {on="❤", off="♡", r=20, onC=0xFFFF4D4D, offC=0xFF505050, p={8,4}},
-    {on="▶", off="■", r=4, onC=0xFF00FF66, offC=0xFF505050, p={8,4}},
-    {on="◉", off="◯", r=20, onC=0xFF00E5FF, offC=0xFF505050, p={4,2}},
-    {on="L", off="R", r=0, onC=0xFF00E5FF, offC=0xFF505050, p={10,4}},
-    {on="ON", off="OFF", r=20, onC=0xFF00FF66, offC=0xFF555555, p={12,5}},
-    {on="ON", off="OFF", r=0, onC=0xFF00FF66, offC=0xFF555555, p={10,5}, b=2},
-    {on="✓", off=" ", r=2, onC=0xFF00FF66, offC=0xFF555555, p={6,6}, b=1},
-    {on="✔", off=".", r=0, onC=0xFF00FF66, offC=0xFF555555, p={8,4}},
-    {on="▶", off="◁", r=0, onC=0xFF00FF66, offC=0xFF505050, p={6,4}},
-    {on="✪", off="☆", r=20, onC=0xFF00E5FF, offC=0xFF505050, p={6,4}},
-    {on="⚡", off="＿", r=4, onC=0xFFFFD700, offC=0xFF505050, p={8,4}},
-    {on="◈", off="◇", r=8, onC=0xFF00E5FF, offC=0xFF505050, p={8,4}},
-    {on="◼", off="◻", r=4, onC=0xFF00E5FF, offC=0xFF505050, p={6,4}},
-    {on="♪", off="♫", r=20, onC=0xFF00E5FF, offC=0xFF505050, p={8,4}}
-}
-
-function CustomUI:Toggle(id, styleIdx, default, width, height)
+function CustomUI:Toggle(id, label, default, w, h)
     local key = tostring(id)
     if self.toggleStates[key] == nil then self.toggleStates[key] = default == true end
     local state = self.toggleStates[key]
     
-    local idx = math.max(1, math.min(30, tonumber(styleIdx) or 1))
-    local s = TogStyles[idx]
-    local label = state and s.on or s.off
-    local w, h = num(width, 80), num(height, 30)
-    
-    local c, sv = 0, 0
+    local c = 0
     if type(ImGui.PushStyleColor) == "function" and type(ImGui.Col) == "table" then
-        local col = state and s.onC or s.offC
-        local hCol = state and (s.onC + 0x11000000) or (s.offC + 0x11000000)
-        local aCol = state and (s.onC - 0x11000000) or (s.offC - 0x11000000)
+        local col = state and 0xFFA0A0A0 or 0xFF404040
         if ImGui.Col.Button and pcall(ImGui.PushStyleColor, ImGui.Col.Button, col) then c = c + 1 end
-        if ImGui.Col.ButtonHovered and pcall(ImGui.PushStyleColor, ImGui.Col.ButtonHovered, hCol) then c = c + 1 end
-        if ImGui.Col.ButtonActive and pcall(ImGui.PushStyleColor, ImGui.Col.ButtonActive, aCol) then c = c + 1 end
     end
     
-    if type(ImGui.PushStyleVar) == "function" and type(ImGui.StyleVar) == "table" then
-        if ImGui.StyleVar.FrameRounding and pcall(ImGui.PushStyleVar, ImGui.StyleVar.FrameRounding, s.r) then sv = sv + 1 end
-        if ImGui.StyleVar.FramePadding and pcall(ImGui.PushStyleVar, ImGui.StyleVar.FramePadding, s.p[1], s.p[2]) then sv = sv + 1 end
-        if s.b and ImGui.StyleVar.FrameBorderSize and pcall(ImGui.PushStyleVar, ImGui.StyleVar.FrameBorderSize, s.b) then sv = sv + 1 end
-    end
-
     local clicked = false
-    local ok, res = pcall(ImGui.Button, label, w, h)
+    local ok, res = pcall(ImGui.Button, label, num(w, 80), num(h, 30))
     if not ok and Vec2 then
-        ok, res = pcall(ImGui.Button, label, Vec2(w, h))
+        ok, res = pcall(ImGui.Button, label, Vec2(num(w, 80), num(h, 30)))
     end
     if ok then clicked = res == true end
-
+    
     if c > 0 and type(ImGui.PopStyleColor) == "function" then pcall(ImGui.PopStyleColor, c) end
-    if sv > 0 and type(ImGui.PopStyleVar) == "function" then pcall(ImGui.PopStyleVar, sv) end
-
+    
     if clicked then
         self.toggleStates[key] = not state
         state = self.toggleStates[key]
@@ -259,71 +240,17 @@ function CustomUI:Toggle(id, styleIdx, default, width, height)
     return state
 end
 
-local Loaders = {
-    [1]={"|","/","-","\\"}, [2]={"◐","◓","◑","◒"}, [3]={"◴","◷","◶","◵"}, [4]={"◰","◳","◲","◱"}, [5]={".","..","...","...."},
-    [6]={"·","••","•••","••••"}, [7]={"▁","▂","▃","▄","▅","▆","▇","█"}, [8]={"█","▇","▆","▅","▄","▃","▂","▁"}, [9]={"▉","▊","▋","▌","▍","▎","▏"}, [10]={"○","◔","◑","◕","●"},
-    [11]={"●○○○","○●○○","○○●○","○○○●"}, [12]={"●○○","○●○","○○●"}, [13]={"[■   ]","[■■  ]","[■■■ ]","[■■■■]"}, [14]={"[■]","[■■]","[■■■]","[■■■■]"}, [15]={"<    >","<=   >","<==  >","<=== >"},
-    [16]={"[    ]","[=   ]","[==  ]","[=== ]","[====]"}, [17]={"←","↖","↑","↗","→","↘","↓","↙"}, [18]={"↺","↻"}, [19]={"⠋","⠙","⠹","⠸","⠼","⠴","⠦","⠧","⠇","⠏"}, [20]={"⠋","⠙","⠚","⠒","⠂","⠂","⠒","⠲","⠴","⠦"},
-    [21]={"▖","▘","▝","▗"}, [22]={"◢","◣","◤","◥"}, [23]={"✦","✧","✦","✧"}, [24]={"★","✦","✧","✦"}, [25]={"<","<<","<<<","<<<<"},
-    [26]={">",">>",">>>",">>>>"}, [27]={"[●   ]","[ ●  ]","[  ● ]","[   ●]"}, [28]={"|","||","|||","||||"}, [29]={"◡","◠","◡","◠"}, [30]={"LOADING","LOADING.","LOADING..","LOADING..."}
-}
-
-function CustomUI:Loading(model, id)
-    local idx = math.max(1, math.min(30, tonumber(model) or 1))
-    local key = tostring(id or ("load_"..idx))
-    if self.loadingStates[key] == nil then self.loadingStates[key] = {frame=1, last=0} end
-    local st = self.loadingStates[key]
-    local now = type(os.clock) == "function" and os.clock() or 0
-    if now - st.last >= 0.12 then
-        st.frame = st.frame + 1
-        st.last = now
-    end
-    local frames = Loaders[idx]
-    if st.frame > #frames then st.frame = 1 end
-    self:Text(frames[st.frame])
-    return frames[st.frame]
-end
-
-function CustomUI:LoadingText(model, text, id)
-    self:Loading(model, id)
-    self:SameLine()
-    self:Text(tostring(text or "Loading") .. " " .. self.loadingStates[tostring(id or ("load_"..(tonumber(model) or 1)))].frame)
-end
-
-function CustomUI:PanelBegin(id, w, h)
-    if type(ImGui.BeginChild) ~= "function" then return false end
-    if Vec2 then 
-        local ok = pcall(ImGui.BeginChild, tostring(id), Vec2(num(w,200), num(h,200)), true)
-        if not ok then pcall(ImGui.BeginChild, tostring(id), Vec2(num(w,200), num(h,200)), true, 0) end
-        return ok
-    end
-    return pcall(ImGui.BeginChild, tostring(id), num(w,200), num(h,200), true)
-end
-
-function CustomUI:PanelEnd()
-    if type(ImGui.EndChild) == "function" then pcall(ImGui.EndChild) end
-end
-
-function CustomUI:Panel(title, w, h, draw)
-    if not self:PanelBegin(title, w, h) then return end
-    local off = self:GetAnimationOffset(28)
-    if off > 0 then self:Dummy(1, off) end
-    self:ColoredText("─ " .. tostring(title), self.theme.Text)
-    self:Separator()
-    if type(draw) == "function" then pcall(draw, self) end
-    self:PanelEnd()
-end
-
 function CustomUI:Show() self.visible = true self:RestartAnimation() end
 function CustomUI:Hide() self.visible = false end
 function CustomUI:Render()
     if not self.visible then return end
-    local ok, opened, tCount = self:Begin()
+    if not self.opened then self.opened = true end 
+    local ok, opened, tCount, sv = self:Begin()
     if ok and opened then
         self:UpdateAnimation()
         pcall(self.OnRender, self)
     end
-    self:End(tCount)
+    self:End(tCount, sv)
 end
 
 return CustomUI
