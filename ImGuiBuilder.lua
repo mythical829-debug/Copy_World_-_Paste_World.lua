@@ -14,11 +14,11 @@ if type(ImGui) == "table" and type(ImGui.WindowFlags) == "table" and ImGui.Windo
     AutoResizeFlag = ImGui.WindowFlags.AlwaysAutoResize
 end
 
-local NoTitleBarFlag = 1
-local NoResizeFlag = 2
-local NoMoveFlag = 4
-local NoSavedSettingsFlag = 256
-local NotifyFlags = AutoResizeFlag + NoTitleBarFlag + NoResizeFlag + NoMoveFlag + NoSavedSettingsFlag
+local NotifFlags = 0
+if type(ImGui) == "table" and type(ImGui.WindowFlags) == "table" then
+    local nf = ImGui.WindowFlags
+    NotifFlags = (nf.NoTitleBar or 0) | (nf.NoResize or 0) | (nf.NoMove or 0) | (nf.NoSavedSettings or 0) | (nf.NoFocusOnAppearing or 0) | (nf.NoNav or 0)
+end
 
 CustomUI.Themes = {
     dark = {
@@ -31,8 +31,7 @@ CustomUI.Themes = {
     }
 }
 CustomUI.Theme = CustomUI.Themes.dark
-
-CustomUI.NotifyState = { text = "", state = "IDLE", t = 0, x = 15, y = -50 }
+CustomUI.Notifications = {}
 
 local function safeNum(val, fallback)
     local n = tonumber(val)
@@ -54,70 +53,6 @@ local function getDisplaySize()
         end
     end
     return 1920, 1080
-end
-
-function CustomUI.Notify(text, duration)
-    CustomUI.NotifyState.text = tostring(text)
-    CustomUI.NotifyState.state = "ENTERING"
-    CustomUI.NotifyState.t = type(os.clock) == "function" and os.clock() or 0
-    CustomUI.NotifyState.duration = safeNum(duration, 2.5)
-end
-
-function CustomUI.RenderNotifications()
-    if CustomUI.NotifyState.state == "IDLE" then return end
-    local now = type(os.clock) == "function" and os.clock() or 0
-    local dt = now - CustomUI.NotifyState.t
-    CustomUI.NotifyState.t = now
-
-    local x, y = 15, 0
-
-    if CustomUI.NotifyState.state == "ENTERING" then
-        local animTime = 0.25
-        local progress = math.min(1, dt / animTime)
-        y = -50 + (65 * easeOutCubic(progress))
-        if progress >= 1 then
-            CustomUI.NotifyState.state = "VISIBLE"
-            CustomUI.NotifyState.t = now
-        end
-    elseif CustomUI.NotifyState.state == "VISIBLE" then
-        y = 15
-        if dt >= CustomUI.NotifyState.duration then
-            CustomUI.NotifyState.state = "EXITING"
-            CustomUI.NotifyState.t = now
-        end
-    elseif CustomUI.NotifyState.state == "EXITING" then
-        local animTime = 0.4
-        local progress = math.min(1, dt / animTime)
-        x = 15 - (250 * easeOutCubic(progress))
-        y = 15
-        if progress >= 1 then
-            CustomUI.NotifyState.state = "IDLE"
-            return
-        end
-    end
-
-    if type(ImGui.SetNextWindowPos) == "function" and Vec2 then
-        pcall(ImGui.SetNextWindowPos, Vec2(x, y))
-    end
-    if type(ImGui.PushStyleVar) == "function" and Vec2 and ImGui.StyleVar.WindowRounding then
-        pcall(ImGui.PushStyleVar, ImGui.StyleVar.WindowRounding, 6)
-    end
-    if type(ImGui.PushStyleColor) == "function" then
-        pcall(ImGui.PushStyleColor, ImGui.Col.WindowBg, 0xE0121212)
-        pcall(ImGui.PushStyleColor, ImGui.Col.Border, 0xFFFF0000)
-        pcall(ImGui.PushStyleColor, ImGui.Col.Text, 0xFFFFFFFF)
-    end
-
-    if type(ImGui.Begin) == "function" then
-        local ok, opened = pcall(ImGui.Begin, "##Notify", true, NotifyFlags)
-        if ok and opened then
-            pcall(ImGui.Text, CustomUI.NotifyState.text)
-            pcall(ImGui.End)
-        end
-    end
-
-    if type(ImGui.PopStyleColor) == "function" then pcall(ImGui.PopStyleColor, 3) end
-    if type(ImGui.PopStyleVar) == "function" then pcall(ImGui.PopStyleVar, 1) end
 end
 
 function CustomUI.New(config)
@@ -150,10 +85,71 @@ function CustomUI.New(config)
     return self
 end
 
+-- SISTEM NOTIFIKASI
+function CustomUI.Notify(text)
+    table.insert(CustomUI.Notifications, {
+        text = tostring(text),
+        anim = 0,
+        state = "IN",
+        lastTime = 0,
+        holdTime = 0
+    })
+end
+
+function CustomUI.RenderNotifications()
+    if type(ImGui) ~= "table" or type(ImGui.Begin) ~= "function" then return end
+    local now = type(os.clock) == "function" and os.clock() or 0
+    local toRemove = {}
+    
+    for i, notif in ipairs(CustomUI.Notifications) do
+        local dt = 0.016
+        if notif.lastTime > 0 then dt = now - notif.lastTime end
+        notif.lastTime = now
+        
+        if notif.state == "IN" then
+            notif.anim = notif.anim + dt / 0.3
+            if notif.anim >= 1 then notif.anim = 1 notif.state = "HOLD" notif.holdTime = 0 end
+        elseif notif.state == "HOLD" then
+            notif.holdTime = notif.holdTime + dt
+            if notif.holdTime >= 3.0 then notif.state = "OUT" end
+        elseif notif.state == "OUT" then
+            notif.anim = notif.anim - dt / 0.3
+            if notif.anim <= 0 then table.insert(toRemove, i) end
+        end
+        
+        local yOff = 0
+        local xOff = 0
+        if notif.state == "IN" then
+            yOff = -50 * (1 - easeOutCubic(notif.anim))
+        elseif notif.state == "OUT" then
+            xOff = -300 * (1 - notif.anim)
+        end
+        
+        local pos = Vec2 and Vec2(10 + xOff, 10 + ((i-1) * 45) + yOff) or nil
+        if pos and type(ImGui.SetNextWindowPos) == "function" then
+            pcall(ImGui.SetNextWindowPos, pos, 1)
+        end
+        
+        local c = 0
+        if type(ImGui.PushStyleColor) == "function" and type(ImGui.Col) == "table" then
+            if ImGui.Col.WindowBg and pcall(ImGui.PushStyleColor, ImGui.Col.WindowBg, 0xCC000000) then c = c + 1 end
+            if ImGui.Col.Border and pcall(ImGui.PushStyleColor, ImGui.Col.Border, 0xFFFF0000) then c = c + 1 end
+        end
+        
+        local ok, opened = pcall(ImGui.Begin, "##notif_" .. i, true, NotifFlags)
+        if ok and opened then
+            pcall(ImGui.Text, notif.text)
+            pcall(ImGui.End)
+        end
+        if c > 0 and type(ImGui.PopStyleColor) == "function" then pcall(ImGui.PopStyleColor, c) end
+    end
+    
+    for i = #toRemove, 1, -1 do table.remove(CustomUI.Notifications, toRemove[i]) end
+end
+
 function CustomUI:RestartAnimation() self.animation = 0 if type(os.clock) == "function" then self.lastTime = os.clock() end end
 function CustomUI:SetActiveTab(name) if self.activeTab ~= name then self.activeTab = tostring(name) self:RestartAnimation() end end
 function CustomUI:GetTab() return self.activeTab end
-
 function CustomUI:UpdateAnimation()
     if self.animation >= 1 then return end
     local now = type(os.clock) == "function" and os.clock() or self.lastTime + 0.016
@@ -184,7 +180,7 @@ function CustomUI:PushTheme()
         {ImGui.Col.Button, t.Button}, {ImGui.Col.ButtonHovered, t.ButtonHovered}, {ImGui.Col.ButtonActive, t.ButtonActive},
         {ImGui.Col.CheckMark, t.CheckMark}, {ImGui.Col.Header, t.Header}, {ImGui.Col.HeaderHovered, t.HeaderHovered}, {ImGui.Col.HeaderActive, t.HeaderActive}
     }
-    for _, c in ipairs(cols) do if c[1] and c[2] then if pcall(ImGui.PushStyleColor, c[1], c[2]) then count = count + 1 end end end
+    for _, c in ipairs(cols) do if c[1] and c[2] and pcall(ImGui.PushStyleColor, c[1], c[2]) then count = count + 1 end end
     return count
 end
 
@@ -202,8 +198,7 @@ function CustomUI:Begin()
     end
     if type(ImGui.Begin) ~= "function" then 
         if sv > 0 and type(ImGui.PopStyleVar) == "function" then pcall(ImGui.PopStyleVar, sv) end
-        self:PopTheme(tCount) 
-        return false, false, tCount, sv 
+        self:PopTheme(tCount) return false, false, tCount, sv 
     end
     local ok, opened = pcall(ImGui.Begin, self.title, self.opened, self.flags)
     if not ok then ok, opened = pcall(ImGui.Begin, self.title, self.opened) end
@@ -244,8 +239,7 @@ function CustomUI:TabBar(tabs, w, h)
         local isActive = self.activeTab == tab.id
         local c = 0
         if type(ImGui.PushStyleColor) == "function" and type(ImGui.Col) == "table" then
-            local col = isActive and 0xFFA0A0A0 or 0xFF404040
-            if ImGui.Col.Button and pcall(ImGui.PushStyleColor, ImGui.Col.Button, col) then c = c + 1 end
+            if ImGui.Col.Button and pcall(ImGui.PushStyleColor, ImGui.Col.Button, isActive and 0xFFA0A0A0 or 0xFF404040) then c = c + 1 end
         end
         local ok, res = pcall(ImGui.Button, tab.label, safeNum(w, 100), safeNum(h, 30))
         if not ok and Vec2 then ok, res = pcall(ImGui.Button, tab.label, Vec2(safeNum(w, 100), safeNum(h, 30))) end
@@ -259,12 +253,8 @@ end
 function CustomUI:BeginTabContent()
     self:Dummy(1, 5)
     local offset = self:GetAnimationOffset(50)
-    if offset > 0.1 then
-        self:Dummy(offset, 1)
-        self:SameLine()
-    end
+    if offset > 0.1 then self:Dummy(offset, 1) self:SameLine() end
 end
-
 function CustomUI:EndTabContent() end
 
 function CustomUI:Button(label, w, h)
@@ -280,14 +270,27 @@ function CustomUI:Toggle(id, label, default, w, h)
     local state = self.toggleStates[key]
     local c = 0
     if type(ImGui.PushStyleColor) == "function" and type(ImGui.Col) == "table" then
-        local col = state and 0xFF30FF30 or 0xFF404040
-        if ImGui.Col.Button and pcall(ImGui.PushStyleColor, ImGui.Col.Button, col) then c = c + 1 end
+        if ImGui.Col.Button and pcall(ImGui.PushStyleColor, ImGui.Col.Button, state and 0xFF30FF30 or 0xFF404040) then c = c + 1 end
     end
     local ok, res = pcall(ImGui.Button, label, safeNum(w, 80), safeNum(h, 30))
     if not ok and Vec2 then ok, res = pcall(ImGui.Button, label, Vec2(safeNum(w, 80), safeNum(h, 30))) end
     if c > 0 and type(ImGui.PopStyleColor) == "function" then pcall(ImGui.PopStyleColor, c) end
     if ok and res then self.toggleStates[key] = not state state = self.toggleStates[key] end
     return state
+end
+
+function CustomUI:Select(id, label, items, current, w, h)
+    local key = tostring(id)
+    if self.selectStates[key] == nil then self.selectStates[key] = current or 1 end
+    local idx = self.selectStates[key]
+    if type(ImGui.Combo) == "function" then
+        local ok, newIdx = pcall(ImGui.Combo, label, idx, items)
+        if ok and type(newIdx) == "number" then
+            self.selectStates[key] = newIdx
+            idx = newIdx
+        end
+    end
+    return idx
 end
 
 function CustomUI:SearchBar(id)
@@ -321,43 +324,18 @@ function CustomUI:FeatureList(id, features)
     end
 end
 
-function CustomUI:Select(id, current, items, w, h)
-    local key = tostring(id)
-    if self.selectStates[key] == nil then self.selectStates[key] = safeNum(current, 0) end
-    local state = self.selectStates[key]
-    local c = 0
-    if type(ImGui.PushStyleColor) == "function" and type(ImGui.Col) == "table" then
-        if ImGui.Col.FrameBg and pcall(ImGui.PushStyleColor, ImGui.Col.FrameBg, 0xFF2A2A2A) then c = c + 1 end
+-- BINGKAI KHUSUS (Child Window)
+function CustomUI:BeginFrame(title, w, h)
+    if type(ImGui.BeginChild) ~= "function" then return false end
+    if Vec2 then
+        local ok = pcall(ImGui.BeginChild, tostring(title), Vec2(safeNum(w, 200), safeNum(h, 100)), true)
+        if ok then self:ColoredText(title, 0xFFFF3030) self:Separator() self:Dummy(1,4) return true end
     end
-    local ok, res = pcall(ImGui.Combo, "##" .. key, state, items)
-    if c > 0 and type(ImGui.PopStyleColor) == "function" then pcall(ImGui.PopStyleColor, c) end
-    if ok and type(res) == "number" then
-        self.selectStates[key] = res
-        state = res
-    end
-    return state
+    return false
 end
 
-function CustomUI:BorderedFrame(title, w, h, draw)
-    if type(ImGui.BeginChild) ~= "function" then return end
-    local c = 0
-    if type(ImGui.PushStyleColor) == "function" and type(ImGui.Col) == "table" then
-        if ImGui.Col.ChildBg and pcall(ImGui.PushStyleColor, ImGui.Col.ChildBg, 0xFF121212) then c = c + 1 end
-        if ImGui.Col.Border and pcall(ImGui.PushStyleColor, ImGui.Col.Border, 0xFFFF0000) then c = c + 1 end
-    end
-    local sv = 0
-    if type(ImGui.PushStyleVar) == "function" and Vec2 and ImGui.StyleVar.ChildRounding then
-        if pcall(ImGui.PushStyleVar, ImGui.StyleVar.ChildRounding, 4) then sv = sv + 1 end
-    end
-    if Vec2 then
-        local ok = pcall(ImGui.BeginChild, title, Vec2(safeNum(w, 200), safeNum(h, 100)), true)
-        if ok then
-            if type(draw) == "function" then pcall(draw, self) end
-            pcall(ImGui.EndChild)
-        end
-    end
-    if c > 0 and type(ImGui.PopStyleColor) == "function" then pcall(ImGui.PopStyleColor, c) end
-    if sv > 0 and type(ImGui.PopStyleVar) == "function" then pcall(ImGui.PopStyleVar, sv) end
+function CustomUI:EndFrame()
+    if type(ImGui.EndChild) == "function" then pcall(ImGui.EndChild) end
 end
 
 function CustomUI:ClampWindowToViewport()
