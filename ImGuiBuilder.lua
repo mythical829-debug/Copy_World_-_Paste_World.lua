@@ -69,7 +69,7 @@ function CustomUI.RenderNotifications()
     local dt = now - CustomUI.NotifyState.t
     CustomUI.NotifyState.t = now
 
-    local x, y = 15, 15
+    local x, y = 15, 0
 
     if CustomUI.NotifyState.state == "ENTERING" then
         local animTime = 0.25
