@@ -72,8 +72,11 @@ function CustomUI.New(config)
     self.lastTime = type(os.clock) == "function" and os.clock() or 0
     self.clampEnabled = config.clamp ~= false
     self.toggleStates = {}
+    self.sliderStates = {}
+    self.inputTextState = {}
     self.searchQueries = {}
     self.selectStates = {}
+    self.frameHeaderData = {}
     self.buttonStatus = "READY"
     return self
 end
@@ -97,6 +100,18 @@ function CustomUI:GetAnimationOffset(distance)
     self:UpdateAnimation() 
     local off = distance * (1 - easeOutCubic(self.animation))
     return safeNum(off, 0) 
+end
+
+-- API STATE MANAGEMENT (GETTER / SETTER)
+function CustomUI:GetToggle(id) return self.toggleStates[tostring(id)] == true end
+function CustomUI:SetToggle(id, state) self.toggleStates[tostring(id)] = state == true end
+function CustomUI:ResetStates()
+    self.toggleStates = {}
+    self.sliderState = {}
+    self.inputTextState = {}
+    self.searchQueries = {}
+    self.selectStates = {}
+    self:RestartAnimation()
 end
 
 function CustomUI:PushTheme()
@@ -152,6 +167,7 @@ function CustomUI:End(tCount, sv)
     self:PopTheme(tCount)
 end
 
+-- TEXT & LAYOUTING
 function CustomUI:Text(text) if type(ImGui.Text) == "function" then pcall(ImGui.Text, tostring(text)) end end
 
 function CustomUI:ColoredText(text, color)
@@ -174,6 +190,8 @@ function CustomUI:SameLine() if type(ImGui.SameLine) == "function" then pcall(Im
 function CustomUI:Dummy(w, h) 
     if type(ImGui.Dummy) == "function" and Vec2 then pcall(ImGui.Dummy, Vec2(safeNum(w, 1), safeNum(h, 1))) end 
 end
+function CustomUI:Indent(w) if type(ImGui.Indent) == "function" then pcall(ImGui.Indent, safeNum(w, 10)) end end
+function CustomUI:Unindent(w) if type(ImGui.Unindent) == "function" then pcall(ImGui.Unindent, safeNum(w, 10)) end end
 
 function CustomUI:TabBar(tabs, w, h)
     if not self.activeTab then self.activeTab = tabs[1].id end
@@ -201,14 +219,23 @@ function CustomUI:BeginTabContent()
         self:SameLine()
     end
 end
-
 function CustomUI:EndTabContent() end
 
+-- INPUT & KONTROL
 function CustomUI:Button(label, w, h)
     if type(ImGui.Button) ~= "function" then return false end
     local ok, res = pcall(ImGui.Button, tostring(label), safeNum(w, 120), safeNum(h, 36))
     if not ok and Vec2 then ok, res = pcall(ImGui.Button, tostring(label), Vec2(safeNum(w, 120), safeNum(h, 36))) end
     return ok and res == true
+end
+
+function CustomUI:Tooltip(text)
+    if type(ImGui.IsItemHovered) == "function" and type(ImGui.SetTooltip) == "function" then
+        local ok, hovered = pcall(ImGui.IsItemHovered)
+        if ok and hovered then
+            pcall(ImGui.SetTooltip, tostring(text))
+        end
+    end
 end
 
 function CustomUI:Toggle(id, label, default, w, h)
@@ -233,33 +260,51 @@ function CustomUI:Checkbox(label, default)
     local state = self.toggleStates[key]
     if type(ImGui.Checkbox) == "function" then
         local ok, res, newstate = pcall(ImGui.Checkbox, label, state)
-        if ok and res then
-            state = newstate
-            self.toggleStates[key] = state
-        end
+        if ok and res then state = newstate self.toggleStates[key] = state end
     end
     return state
+end
+
+function CustomUI:SliderInt(id, label, val, min, max)
+    local key = "sld_" .. tostring(id)
+    if self.sliderState[key] == nil then self.sliderState[key] = safeNum(val, 0) end
+    local v = self.sliderState[key]
+    if type(ImGui.SliderInt) == "function" then
+        local ok, res, newv = pcall(ImGui.SliderInt, label, v, safeNum(min, 0), safeNum(max, 100))
+        if ok and res then v = newv self.sliderState[key] = v end
+    end
+    return v
+end
+
+function CustomUI:SliderFloat(id, label, val, min, max)
+    local key = "sldf_" .. tostring(id)
+    if self.sliderState[key] == nil then self.sliderState[key] = safeNum(val, 0.0) end
+    local v = self.sliderState[key]
+    if type(ImGui.SliderFloat) == "function" then
+        local ok, res, newv = pcall(ImGui.SliderFloat, label, v, safeNum(min, 0.0), safeNum(max, 1.0), "%.2f")
+        if ok and res then v = newv self.sliderState[key] = v end
+    end
+    return v
+end
+
+function CustomUI:InputText(id, hint, w)
+    local key = "inp_" .. tostring(id)
+    if self.inputTextState[key] == nil then self.inputTextState[key] = "" end
+    if type(ImGui.InputText) == "function" then
+        local ok, val = pcall(ImGui.InputText, hint or "", self.inputTextState[key], safeNum(w, 200))
+        if ok and type(val) == "string" then self.inputTextState[key] = val end
+    end
+    return self.inputTextState[key]
 end
 
 function CustomUI:Select(id, label, items, current, w, h)
     local key = tostring(id)
     if self.selectStates[key] == nil then self.selectStates[key] = safeNum(current, 0) end
     local state = self.selectStates[key]
-    
     if type(ImGui.Combo) == "function" then
         local items_str = table.concat(items, "\0") .. "\0"
         local ok, res, newstate = pcall(ImGui.Combo, label, state, items_str, #items)
-        if ok and res then
-            state = newstate
-            self.selectStates[key] = state
-        end
-    elseif type(ImGui.ListBox) == "function" then
-        local items_str = table.concat(items, "\0") .. "\0"
-        local ok, res, newstate = pcall(ImGui.ListBox, label, state, items_str, #items, safeNum(h, 5))
-        if ok and res then
-            state = newstate
-            self.selectStates[key] = state
-        end
+        if ok and res then state = newstate self.selectStates[key] = state end
     end
     return state
 end
@@ -269,12 +314,11 @@ function CustomUI:SearchBar(id)
     if self.searchQueries[key] == nil then self.searchQueries[key] = "" end
     if type(ImGui.InputText) == "function" then
         local ok, val = pcall(ImGui.InputText, "##" .. key, self.searchQueries[key], 200)
-        if ok and type(val) == "string" then
-            self.searchQueries[key] = val
-        end
+        if ok and type(val) == "string" then self.searchQueries[key] = val end
     end
     self:Dummy(1, 4)
     self:Separator()
+    return self.searchQueries[key]
 end
 
 function CustomUI:CollapsingHeader(label)
@@ -285,40 +329,33 @@ function CustomUI:CollapsingHeader(label)
     return true
 end
 
-function CustomUI:FeatureList(id, features)
-    local key = "search_" .. tostring(id)
-    local query = (self.searchQueries[key] or ""):lower()
-    for _, item in ipairs(features) do
-        local text = tostring(item)
-        if query == "" or text:lower():find(query) then
-            self:Text(text)
-            self:Dummy(1, 4)
+-- FITUR BINGKAI & PENGGELOMPOKAN
+function CustomUI:BeginFrame(title)
+    if type(ImGui.BeginGroup) == "function" then pcall(ImGui.BeginGroup) end
+    self:Dummy(8, 4)
+    self:ColoredText(tostring(title), 0xFFFFFFFF)
+    
+    if type(ImGui.GetItemRectMin) == "function" and type(ImGui.GetItemRectSize) == "function" then
+        local p_ok, pos = pcall(ImGui.GetItemRectMin)
+        local s_ok, sz = pcall(ImGui.GetItemRectSize)
+        if p_ok and s_ok and pos and sz then
+            self.frameHeaderData = {
+                x = safeNum(pos.x, 0), y = safeNum(pos.y, 0),
+                w = safeNum(sz.x, 100), h = safeNum(sz.y, 20)
+            }
         end
     end
-end
-
--- BINGKAI CUSTOM (GROUP + DRAWLIST) - AUTO RESIZE PRESISI & BORDER DALAM
-function CustomUI:BeginFrame(title)
-    if type(ImGui.BeginGroup) == "function" then
-        pcall(ImGui.BeginGroup)
-    end
     
-    self:Dummy(8, 4)
-    self:ColoredText(tostring(title), 0xFFFF5050)
     self:Separator()
     self:Dummy(1, 4)
-    
     return true
 end
 
 function CustomUI:EndFrame()
     self:Dummy(8, 4)
+    if type(ImGui.EndGroup) == "function" then pcall(ImGui.EndGroup) end
     
-    if type(ImGui.EndGroup) == "function" then
-        pcall(ImGui.EndGroup)
-    end
-    
-    if type(ImGui.GetWindowDrawList) == "function" and type(ImGui.GetItemRectSize) == "function" and type(ImGui.GetItemRectMin) == "function" and Vec2 then
+    if type(ImGui.GetWindowDrawList) == "function" and type(ImGui.GetItemRectSize) == "function" and Vec2 then
         local draw = ImGui.GetWindowDrawList()
         local sz_ok, sz = pcall(ImGui.GetItemRectSize)
         local p_ok, pos = pcall(ImGui.GetItemRectMin)
@@ -329,12 +366,62 @@ function CustomUI:EndFrame()
             local px = safeNum(pos.x, 0)
             local py = safeNum(pos.y, 0)
             
-            local p_min = Vec2(px, py)
+            local p_min = Vec2(px - 8, py - 4)
             local p_max = Vec2(px + w, py + h)
             
-            local ok = pcall(draw.AddRect, draw, p_min, p_max, 0xFFFF0000, 6, 15, 2.0)
-            if not ok then
-                pcall(draw.AddRect, draw, px, py, px + w, py + h, 0xFFFF0000, 6, 15, 2.0)
+            -- Header Background Fill
+            if self.frameHeaderData and self.frameHeaderData.w > 0 then
+                local hp_min = Vec2(self.frameHeaderData.x - 8, self.frameHeaderData.y - 4)
+                local hp_max = Vec2(self.frameHeaderData.x + w, self.frameHeaderData.y + self.frameHeaderData.h + 4)
+                pcall(draw.AddRectFilled, draw, hp_min, hp_max, 0xFF300000, 6, 15)
+            end
+            
+            -- Border Outline
+            pcall(draw.AddRect, draw, p_min, p_max, 0xFFFF0000, 6, 15, 2.0)
+        end
+    end
+end
+
+function CustomUI:BeginScroll(id, w, h)
+    if type(ImGui.BeginChild) == "function" and Vec2 then
+        local cw = safeNum(w, 200)
+        local ch = safeNum(h, 200)
+        local ok = pcall(ImGui.BeginChild, tostring(id), Vec2(cw, ch), true, 0)
+        return ok
+    end
+    return false
+end
+
+function CustomUI:EndScroll()
+    if type(ImGui.EndChild) == "function" then pcall(ImGui.EndChild) end
+end
+
+function CustomUI:FeatureList(id, features)
+    local query = (self:SearchBar(id) or ""):lower()
+    for _, item in ipairs(features) do
+        local text = tostring(item)
+        if query == "" or text:lower():find(query) then
+            self:Text(text)
+            self:Dummy(1, 4)
+        end
+    end
+end
+
+function CustomUI:InteractiveList(id, items)
+    local query = (self:SearchBar(id) or ""):lower()
+    for i, item in ipairs(items) do
+        local label = item.label or ("Item "..i)
+        if query == "" or label:lower():find(query) then
+            local state = self:GetToggle(id.."_"..i)
+            if self:Toggle(id.."_"..i, label, state, 150, 30) then
+                state = not state
+                self:SetToggle(id.."_"..i, state)
+            end
+            self:SameLine()
+            if state then
+                self:ColoredText("[ON]", 0xFF30FF30)
+            else
+                self:ColoredText("[OFF]", 0xFFFF5050)
             end
         end
     end
