@@ -47,7 +47,7 @@ function CustomUI.New(config)
     config = config or {}
     local self = setmetatable({}, CustomUI)
     self.title = config.title or "Custom UI"
-    self.size = config.size or {520, 380}
+    self.size = config.size or {500, 400}
     self.visible = config.visible ~= false
     self.opened = true
     self.flags = config.flags or 0
@@ -296,24 +296,16 @@ function CustomUI:FeatureList(id, features)
     end
 end
 
--- Frame / Bingkai (Auto-Resize Presisi)
-function CustomUI:BeginFrame(title, w, h)
+-- Frame / Bingkai Presisi (AutoSize Pas)
+function CustomUI:BeginFrame(title)
     if type(ImGui.BeginChild) == "function" and Vec2 then
-        local cw = safeNum(w, 0)
-        local ch = safeNum(h, 0)
-        
-        -- FIX PRESISI: Jika w=0, ambil sisa lebar layar yang tersedia
-        if cw == 0 and type(ImGui.GetContentRegionAvail) == "function" then
-            local okAv, avail = pcall(ImGui.GetContentRegionAvail)
-            if okAv and type(avail) == "table" then
-                cw = safeNum(avail.x, 400)
-            end
+        local auto_resize_flag = 64
+        if type(ImGui.WindowFlags) == "table" and ImGui.WindowFlags.AlwaysAutoResize then
+            auto_resize_flag = ImGui.WindowFlags.AlwaysAutoResize
         end
         
-        -- Jika h=0, gunakan tinggi auto (fit ke konten)
-        if ch == 0 then ch = 0 end 
-        
-        local ok = pcall(ImGui.BeginChild, tostring(title), Vec2(cw, ch), true, 0)
+        -- Vec2(0,0) + Flag AlwaysAutoResize membuat bingkai PRECISE mengikuti ukuran konten
+        local ok = pcall(ImGui.BeginChild, tostring(title), Vec2(0, 0), true, auto_resize_flag)
         if ok then
             self:ColoredText(tostring(title), 0xFFFF5050)
             self:Separator()
