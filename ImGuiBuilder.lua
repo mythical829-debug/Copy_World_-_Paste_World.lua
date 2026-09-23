@@ -72,7 +72,7 @@ function CustomUI.New(config)
     self.lastTime = type(os.clock) == "function" and os.clock() or 0
     self.clampEnabled = config.clamp ~= false
     self.toggleStates = {}
-    self.sliderStates = {}
+    self.sliderState = {}
     self.inputTextState = {}
     self.searchQueries = {}
     self.selectStates = {}
@@ -102,7 +102,7 @@ function CustomUI:GetAnimationOffset(distance)
     return safeNum(off, 0) 
 end
 
--- API STATE MANAGEMENT (GETTER / SETTER)
+-- API STATE MANAGEMENT
 function CustomUI:GetToggle(id) return self.toggleStates[tostring(id)] == true end
 function CustomUI:SetToggle(id, state) self.toggleStates[tostring(id)] = state == true end
 function CustomUI:ResetStates()
@@ -144,8 +144,10 @@ function CustomUI:Begin()
         if ImGui.StyleVar.WindowBorderSize and pcall(ImGui.PushStyleVar, ImGui.StyleVar.WindowBorderSize, 2) then sv = sv + 1 end
         if ImGui.StyleVar.FrameBorderSize and pcall(ImGui.PushStyleVar, ImGui.StyleVar.FrameBorderSize, 1) then sv = sv + 1 end
         if ImGui.StyleVar.FrameRounding and pcall(ImGui.PushStyleVar, ImGui.StyleVar.FrameRounding, 4) then sv = sv + 1 end
-        if Vec2 and ImGui.StyleVar.WindowPadding and pcall(ImGui.PushStyleVar, ImGui.StyleVar.WindowPadding, Vec2(15, 15)) then sv = sv + 1 end
-        if Vec2 and ImGui.StyleVar.ItemSpacing and pcall(ImGui.PushStyleVar, ImGui.StyleVar.ItemSpacing, Vec2(8, 6)) then sv = sv + 1 end
+        if ImGui.StyleVar.WindowPadding and pcall(ImGui.PushStyleVar, ImGui.StyleVar.WindowPadding, 15, 15) then sv = sv + 1
+        elseif Vec2 and ImGui.StyleVar.WindowPadding and pcall(ImGui.PushStyleVar, ImGui.StyleVar.WindowPadding, Vec2(15, 15)) then sv = sv + 1 end
+        if ImGui.StyleVar.ItemSpacing and pcall(ImGui.PushStyleVar, ImGui.StyleVar.ItemSpacing, 8, 6) then sv = sv + 1
+        elseif Vec2 and ImGui.StyleVar.ItemSpacing and pcall(ImGui.PushStyleVar, ImGui.StyleVar.ItemSpacing, Vec2(8, 6)) then sv = sv + 1 end
     end
     
     if type(ImGui.Begin) ~= "function" then 
@@ -188,7 +190,10 @@ end
 function CustomUI:Separator() if type(ImGui.Separator) == "function" then pcall(ImGui.Separator) end end
 function CustomUI:SameLine() if type(ImGui.SameLine) == "function" then pcall(ImGui.SameLine) end end
 function CustomUI:Dummy(w, h) 
-    if type(ImGui.Dummy) == "function" and Vec2 then pcall(ImGui.Dummy, Vec2(safeNum(w, 1), safeNum(h, 1))) end 
+    if type(ImGui.Dummy) == "function" then
+        local ok = pcall(ImGui.Dummy, safeNum(w, 1), safeNum(h, 1))
+        if not ok and Vec2 then pcall(ImGui.Dummy, Vec2(safeNum(w, 1), safeNum(h, 1))) end
+    end 
 end
 function CustomUI:Indent(w) if type(ImGui.Indent) == "function" then pcall(ImGui.Indent, safeNum(w, 10)) end end
 function CustomUI:Unindent(w) if type(ImGui.Unindent) == "function" then pcall(ImGui.Unindent, safeNum(w, 10)) end end
@@ -232,9 +237,7 @@ end
 function CustomUI:Tooltip(text)
     if type(ImGui.IsItemHovered) == "function" and type(ImGui.SetTooltip) == "function" then
         local ok, hovered = pcall(ImGui.IsItemHovered)
-        if ok and hovered then
-            pcall(ImGui.SetTooltip, tostring(text))
-        end
+        if ok and hovered then pcall(ImGui.SetTooltip, tostring(text)) end
     end
 end
 
@@ -366,27 +369,28 @@ function CustomUI:EndFrame()
             local px = safeNum(pos.x, 0)
             local py = safeNum(pos.y, 0)
             
-            local p_min = Vec2(px - 8, py - 4)
-            local p_max = Vec2(px + w, py + h)
-            
-            -- Header Background Fill
             if self.frameHeaderData and self.frameHeaderData.w > 0 then
                 local hp_min = Vec2(self.frameHeaderData.x - 8, self.frameHeaderData.y - 4)
                 local hp_max = Vec2(self.frameHeaderData.x + w, self.frameHeaderData.y + self.frameHeaderData.h + 4)
-                pcall(draw.AddRectFilled, draw, hp_min, hp_max, 0xFF300000, 6, 15)
+                pcall(draw.AddRectFilled, draw, hp_min, hp_max, 0xFF300000, 6)
             end
             
-            -- Border Outline
+            local p_min = Vec2(px - 8, py - 4)
+            local p_max = Vec2(px + w, py + h)
             pcall(draw.AddRect, draw, p_min, p_max, 0xFFFF0000, 6, 15, 2.0)
         end
     end
 end
 
 function CustomUI:BeginScroll(id, w, h)
-    if type(ImGui.BeginChild) == "function" and Vec2 then
+    if type(ImGui.BeginChild) == "function" then
         local cw = safeNum(w, 200)
         local ch = safeNum(h, 200)
-        local ok = pcall(ImGui.BeginChild, tostring(id), Vec2(cw, ch), true, 0)
+        -- FIX CRASH ANDROID: Pakai angka biasa dulu, bukan Vec2
+        local ok = pcall(ImGui.BeginChild, tostring(id), cw, ch, true, 0)
+        if not ok and Vec2 then
+            ok = pcall(ImGui.BeginChild, tostring(id), Vec2(cw, ch), true, 0)
+        end
         return ok
     end
     return false
