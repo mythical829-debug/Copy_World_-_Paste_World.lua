@@ -76,7 +76,7 @@ function CustomUI.New(config)
     self.inputTextState = {}
     self.searchQueries = {}
     self.selectStates = {}
-    self.frameHeaderData = {}
+    self.frameStack = {}
     self.buttonStatus = "READY"
     return self
 end
@@ -105,6 +105,24 @@ end
 -- API STATE MANAGEMENT
 function CustomUI:GetToggle(id) return self.toggleStates[tostring(id)] == true end
 function CustomUI:SetToggle(id, state) self.toggleStates[tostring(id)] = state == true end
+
+function CustomUI:GetSlider(id) 
+    return self.sliderState["sld_" .. tostring(id)] or self.sliderState["sldf_" .. tostring(id)] or 0 
+end
+
+function CustomUI:SetSlider(id, val) 
+    self.sliderState["sld_" .. tostring(id)] = safeNum(val, 0)
+    self.sliderState["sldf_" .. tostring(id)] = safeNum(val, 0)
+end
+
+function CustomUI:GetInputText(id) 
+    return self.inputTextState["inp_" .. tostring(id)] or "" 
+end
+
+function CustomUI:SetInputText(id, text) 
+    self.inputTextState["inp_" .. tostring(id)] = tostring(text)
+end
+
 function CustomUI:ResetStates()
     self.toggleStates = {}
     self.sliderState = {}
@@ -332,23 +350,23 @@ function CustomUI:CollapsingHeader(label)
     return true
 end
 
--- FITUR BINGKAI & PENGGELOMPOKAN
+-- FITUR BINGKAI & PENGGELOMPOKAN (FIX VISUAL & STACK)
 function CustomUI:BeginFrame(title)
     if type(ImGui.BeginGroup) == "function" then pcall(ImGui.BeginGroup) end
-    self:Dummy(8, 4)
-    self:ColoredText(tostring(title), 0xFFFFFFFF)
     
-    if type(ImGui.GetItemRectMin) == "function" and type(ImGui.GetItemRectSize) == "function" then
-        local p_ok, pos = pcall(ImGui.GetItemRectMin)
-        local s_ok, sz = pcall(ImGui.GetItemRectSize)
-        if p_ok and s_ok and pos and sz then
-            self.frameHeaderData = {
-                x = safeNum(pos.x, 0), y = safeNum(pos.y, 0),
-                w = safeNum(sz.x, 100), h = safeNum(sz.y, 20)
-            }
+    self.frameStack = self.frameStack or {}
+    local startX, startY = 0, 0
+    if type(ImGui.GetCursorScreenPos) == "function" then
+        local ok, pos = pcall(ImGui.GetCursorScreenPos)
+        if ok and pos then 
+            startX = safeNum(pos.x, 0)
+            startY = safeNum(pos.y, 0)
         end
     end
-    
+    table.insert(self.frameStack, { x = startX, y = startY })
+
+    self:Dummy(8, 4)
+    self:ColoredText(tostring(title), 0xFFFFFFFF)
     self:Separator()
     self:Dummy(1, 4)
     return true
@@ -357,6 +375,9 @@ end
 function CustomUI:EndFrame()
     self:Dummy(8, 4)
     if type(ImGui.EndGroup) == "function" then pcall(ImGui.EndGroup) end
+    
+    self.frameStack = self.frameStack or {}
+    local frameData = table.remove(self.frameStack)
     
     if type(ImGui.GetWindowDrawList) == "function" and type(ImGui.GetItemRectSize) == "function" and Vec2 then
         local draw = ImGui.GetWindowDrawList()
@@ -369,14 +390,10 @@ function CustomUI:EndFrame()
             local px = safeNum(pos.x, 0)
             local py = safeNum(pos.y, 0)
             
-            if self.frameHeaderData and self.frameHeaderData.w > 0 then
-                local hp_min = Vec2(self.frameHeaderData.x - 8, self.frameHeaderData.y - 4)
-                local hp_max = Vec2(self.frameHeaderData.x + w, self.frameHeaderData.y + self.frameHeaderData.h + 4)
-                pcall(draw.AddRectFilled, draw, hp_min, hp_max, 0xFF300000, 6)
-            end
-            
             local p_min = Vec2(px - 8, py - 4)
             local p_max = Vec2(px + w, py + h)
+            
+            -- Gambar Border Luar
             pcall(draw.AddRect, draw, p_min, p_max, 0xFFFF0000, 6, 15, 2.0)
         end
     end
@@ -386,7 +403,6 @@ function CustomUI:BeginScroll(id, w, h)
     if type(ImGui.BeginChild) == "function" then
         local cw = safeNum(w, 200)
         local ch = safeNum(h, 200)
-        -- FIX CRASH ANDROID: Pakai angka biasa dulu, bukan Vec2
         local ok = pcall(ImGui.BeginChild, tostring(id), cw, ch, true, 0)
         if not ok and Vec2 then
             ok = pcall(ImGui.BeginChild, tostring(id), Vec2(cw, ch), true, 0)
@@ -411,16 +427,15 @@ function CustomUI:FeatureList(id, features)
     end
 end
 
+-- FIX INTERACTIVE LIST LOGIC
 function CustomUI:InteractiveList(id, items)
     local query = (self:SearchBar(id) or ""):lower()
     for i, item in ipairs(items) do
         local label = item.label or ("Item "..i)
         if query == "" or label:lower():find(query) then
-            local state = self:GetToggle(id.."_"..i)
-            if self:Toggle(id.."_"..i, label, state, 150, 30) then
-                state = not state
-                self:SetToggle(id.."_"..i, state)
-            end
+            local toggleId = id .. "_" .. i
+            local state = self:Toggle(toggleId, label, item.default == true, 150, 30)
+            
             self:SameLine()
             if state then
                 self:ColoredText("[ON]", 0xFF30FF30)
