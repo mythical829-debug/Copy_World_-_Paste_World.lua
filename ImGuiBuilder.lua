@@ -50,8 +50,6 @@ function CustomUI.New(config)
     self.size = config.size or {520, 380}
     self.visible = config.visible ~= false
     self.opened = true
-    
-    -- FIX: Hapus AutoResize di Window utama agar tidak goyang saat ganti title
     self.flags = config.flags or 0
     
     if type(config.theme) == "string" then
@@ -298,12 +296,23 @@ function CustomUI:FeatureList(id, features)
     end
 end
 
--- Frame / Bingkai (AutoResize Ada Di Sini)
+-- Frame / Bingkai (Auto-Resize Presisi)
 function CustomUI:BeginFrame(title, w, h)
     if type(ImGui.BeginChild) == "function" and Vec2 then
-        -- FIX: Gunakan 0,0 untuk auto-resize child frame jika w/h tidak diisi
-        local cw = (w == 0) and 0 or safeNum(w, 200)
-        local ch = (h == 0) and 0 or safeNum(h, 100)
+        local cw = safeNum(w, 0)
+        local ch = safeNum(h, 0)
+        
+        -- FIX PRESISI: Jika w=0, ambil sisa lebar layar yang tersedia
+        if cw == 0 and type(ImGui.GetContentRegionAvail) == "function" then
+            local okAv, avail = pcall(ImGui.GetContentRegionAvail)
+            if okAv and type(avail) == "table" then
+                cw = safeNum(avail.x, 400)
+            end
+        end
+        
+        -- Jika h=0, gunakan tinggi auto (fit ke konten)
+        if ch == 0 then ch = 0 end 
+        
         local ok = pcall(ImGui.BeginChild, tostring(title), Vec2(cw, ch), true, 0)
         if ok then
             self:ColoredText(tostring(title), 0xFFFF5050)
