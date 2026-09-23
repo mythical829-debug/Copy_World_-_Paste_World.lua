@@ -312,8 +312,12 @@ function CustomUI:InputText(id, hint, w)
     local key = "inp_" .. tostring(id)
     if self.inputTextState[key] == nil then self.inputTextState[key] = "" end
     if type(ImGui.InputText) == "function" then
-        local ok, val = pcall(ImGui.InputText, hint or "", self.inputTextState[key], safeNum(w, 200))
-        if ok and type(val) == "string" then self.inputTextState[key] = val end
+        local ok, res, val = pcall(ImGui.InputText, hint or "", self.inputTextState[key], safeNum(w, 200))
+        if ok and type(val) == "string" then
+            self.inputTextState[key] = val
+        elseif ok and type(res) == "string" then
+            self.inputTextState[key] = res
+        end
     end
     return self.inputTextState[key]
 end
@@ -334,8 +338,12 @@ function CustomUI:SearchBar(id)
     local key = "search_" .. tostring(id)
     if self.searchQueries[key] == nil then self.searchQueries[key] = "" end
     if type(ImGui.InputText) == "function" then
-        local ok, val = pcall(ImGui.InputText, "##" .. key, self.searchQueries[key], 200)
-        if ok and type(val) == "string" then self.searchQueries[key] = val end
+        local ok, res, val = pcall(ImGui.InputText, "##" .. key, self.searchQueries[key], 200)
+        if ok and type(val) == "string" then
+            self.searchQueries[key] = val
+        elseif ok and type(res) == "string" then
+            self.searchQueries[key] = res
+        end
     end
     self:Dummy(1, 4)
     self:Separator()
