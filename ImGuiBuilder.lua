@@ -9,6 +9,12 @@ end
 if not Vec2 and type(_G.Vec2) == "function" then Vec2 = _G.Vec2 end
 if not Vec2 and type(_G.ImVec2) == "function" then Vec2 = _G.ImVec2 end
 
+-- Flag AutoResize untuk Window dan Child
+local AutoResizeFlag = 64
+if type(ImGui) == "table" and type(ImGui.WindowFlags) == "table" and ImGui.WindowFlags.AlwaysAutoResize then
+    AutoResizeFlag = ImGui.WindowFlags.AlwaysAutoResize
+end
+
 CustomUI.Themes = {
     dark = {
         WindowBg = 0xFF0A0A0A, ChildBg = 0xFF121212, PopupBg = 0xFF121212,
@@ -47,10 +53,12 @@ function CustomUI.New(config)
     config = config or {}
     local self = setmetatable({}, CustomUI)
     self.title = config.title or "Custom UI"
-    self.size = config.size or {500, 400}
+    self.size = config.size or {520, 380}
     self.visible = config.visible ~= false
     self.opened = true
-    self.flags = config.flags or 0
+    
+    -- FIX: Gunakan AutoResize di main window agar otomatis, hapus ukuran manual
+    self.flags = config.flags or AutoResizeFlag
     
     if type(config.theme) == "string" then
         self.theme = CustomUI.Themes[config.theme] or CustomUI.Theme
@@ -126,10 +134,6 @@ function CustomUI:Begin()
         if ImGui.StyleVar.FrameRounding and pcall(ImGui.PushStyleVar, ImGui.StyleVar.FrameRounding, 4) then sv = sv + 1 end
         if Vec2 and ImGui.StyleVar.WindowPadding and pcall(ImGui.PushStyleVar, ImGui.StyleVar.WindowPadding, Vec2(15, 15)) then sv = sv + 1 end
         if Vec2 and ImGui.StyleVar.ItemSpacing and pcall(ImGui.PushStyleVar, ImGui.StyleVar.ItemSpacing, Vec2(8, 6)) then sv = sv + 1 end
-    end
-    
-    if type(ImGui.SetNextWindowSize) == "function" and Vec2 then
-        pcall(ImGui.SetNextWindowSize, Vec2(safeNum(self.size[1], 520), safeNum(self.size[2], 380)), (ImGui.Cond and ImGui.Cond.FirstUseEver) or 1)
     end
     
     if type(ImGui.Begin) ~= "function" then 
@@ -296,16 +300,18 @@ function CustomUI:FeatureList(id, features)
     end
 end
 
--- Frame / Bingkai Presisi (AutoSize Pas)
-function CustomUI:BeginFrame(title)
+-- Frame / Bingkai Presisi Auto-Resize
+function CustomUI:BeginFrame(title, w, h)
     if type(ImGui.BeginChild) == "function" and Vec2 then
-        local auto_resize_flag = 64
-        if type(ImGui.WindowFlags) == "table" and ImGui.WindowFlags.AlwaysAutoResize then
-            auto_resize_flag = ImGui.WindowFlags.AlwaysAutoResize
+        local cw = safeNum(w, 0)
+        local ch = safeNum(h, 0)
+        
+        -- FIX: Gunakan Flag AutoResize di Child agar pas dengan isi
+        local ok = pcall(ImGui.BeginChild, tostring(title), Vec2(cw, ch), true, AutoResizeFlag)
+        if not ok then
+            ok = pcall(ImGui.BeginChild, tostring(title), Vec2(cw, ch), true, 0)
         end
         
-        -- Vec2(0,0) + Flag AlwaysAutoResize membuat bingkai PRECISE mengikuti ukuran konten
-        local ok = pcall(ImGui.BeginChild, tostring(title), Vec2(0, 0), true, auto_resize_flag)
         if ok then
             self:ColoredText(tostring(title), 0xFFFF5050)
             self:Separator()
