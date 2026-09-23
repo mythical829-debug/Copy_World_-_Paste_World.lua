@@ -34,18 +34,6 @@ local function num(value, fallback)
     return n == nil and fallback or n
 end
 
-local function xy(value)
-    if not value then return nil, nil end
-    local x, y
-    pcall(function() x, y = value.x, value.y end)
-    if not tonumber(x) or not tonumber(y) then
-        pcall(function() x, y = value[1], value[2] end)
-    end
-    x, y = tonumber(x), tonumber(y)
-    if not x or not y or x ~= x or y ~= y then return nil, nil end
-    return x, y
-end
-
 local function easeOutCubic(t)
     if t <= 0 then return 0 end
     if t >= 1 then return 1 end
@@ -68,6 +56,7 @@ function CustomUI.New(config)
     self.clampEnabled = config.clamp ~= false
     self.loadingStates = {}
     self.toggleStates = {}
+    self.buttonStatus = "READY"
     return self
 end
 
@@ -79,6 +68,10 @@ end
 function CustomUI:OpenTab(name)
     self.activeTab = tostring(name)
     self:RestartAnimation()
+end
+
+function CustomUI:GetTab()
+    return self.activeTab
 end
 
 function CustomUI:UpdateAnimation()
@@ -123,6 +116,8 @@ function CustomUI:Begin()
     local tCount = self:PushTheme()
     if type(ImGui.SetNextWindowSize) == "function" and Vec2 then
         pcall(ImGui.SetNextWindowSize, Vec2(num(self.size[1], 520), num(self.size[2], 380)), (ImGui.Cond and ImGui.Cond.FirstUseEver) or 1)
+    elseif type(ImGui.SetNextWindowSize) == "function" then
+        pcall(ImGui.SetNextWindowSize, num(self.size[1], 520), num(self.size[2], 380), 1)
     end
     if type(ImGui.Begin) ~= "function" then self:PopTheme(tCount) return false, false, tCount end
     local ok, opened = pcall(ImGui.Begin, self.title, true, self.flags)
@@ -168,25 +163,23 @@ function CustomUI:Button(label, styleIdx, width, height)
     local idx = math.max(1, math.min(30, tonumber(styleIdx) or 1))
     local s = BtnStyles[idx]
     local w, h = num(width, 120), num(height, 36)
-    local c = 0
     local sv = 0
     
     if type(ImGui.PushStyleVar) == "function" and type(ImGui.StyleVar) == "table" then
         if ImGui.StyleVar.FrameRounding and pcall(ImGui.PushStyleVar, ImGui.StyleVar.FrameRounding, s.r) then sv = sv + 1 end
-        if Vec2 and ImGui.StyleVar.FramePadding and pcall(ImGui.PushStyleVar, ImGui.StyleVar.FramePadding, Vec2(s.p[1], s.p[2])) then sv = sv + 1 end
+        if ImGui.StyleVar.FramePadding and pcall(ImGui.PushStyleVar, ImGui.StyleVar.FramePadding, s.p[1], s.p[2]) then sv = sv + 1 end
         if ImGui.StyleVar.FrameBorderSize and pcall(ImGui.PushStyleVar, ImGui.StyleVar.FrameBorderSize, s.b) then sv = sv + 1 end
     end
 
     local clicked = false
-    if Vec2 then
-        local ok, res = pcall(ImGui.Button, tostring(label), Vec2(w, h))
-        if ok then clicked = res == true end
-    else
-        local ok, res = pcall(ImGui.Button, tostring(label), w, h)
-        if ok then clicked = res == true end
+    local ok, res = pcall(ImGui.Button, tostring(label), w, h)
+    if not ok and Vec2 then
+        ok, res = pcall(ImGui.Button, tostring(label), Vec2(w, h))
     end
+    if ok then clicked = res == true end
 
     if sv > 0 and type(ImGui.PopStyleVar) == "function" then pcall(ImGui.PopStyleVar, sv) end
+    if clicked then self.buttonStatus = "BUTTON " .. idx .. " CLICKED" end
     return clicked
 end
 
@@ -245,18 +238,16 @@ function CustomUI:Toggle(id, styleIdx, default, width, height)
     
     if type(ImGui.PushStyleVar) == "function" and type(ImGui.StyleVar) == "table" then
         if ImGui.StyleVar.FrameRounding and pcall(ImGui.PushStyleVar, ImGui.StyleVar.FrameRounding, s.r) then sv = sv + 1 end
-        if Vec2 and ImGui.StyleVar.FramePadding and pcall(ImGui.PushStyleVar, ImGui.StyleVar.FramePadding, Vec2(s.p[1], s.p[2])) then sv = sv + 1 end
+        if ImGui.StyleVar.FramePadding and pcall(ImGui.PushStyleVar, ImGui.StyleVar.FramePadding, s.p[1], s.p[2]) then sv = sv + 1 end
         if s.b and ImGui.StyleVar.FrameBorderSize and pcall(ImGui.PushStyleVar, ImGui.StyleVar.FrameBorderSize, s.b) then sv = sv + 1 end
     end
 
     local clicked = false
-    if Vec2 then
-        local ok, res = pcall(ImGui.Button, label, Vec2(w, h))
-        if ok then clicked = res == true end
-    else
-        local ok, res = pcall(ImGui.Button, label, w, h)
-        if ok then clicked = res == true end
+    local ok, res = pcall(ImGui.Button, label, w, h)
+    if not ok and Vec2 then
+        ok, res = pcall(ImGui.Button, label, Vec2(w, h))
     end
+    if ok then clicked = res == true end
 
     if c > 0 and type(ImGui.PopStyleColor) == "function" then pcall(ImGui.PopStyleColor, c) end
     if sv > 0 and type(ImGui.PopStyleVar) == "function" then pcall(ImGui.PopStyleVar, sv) end
@@ -301,7 +292,11 @@ end
 
 function CustomUI:PanelBegin(id, w, h)
     if type(ImGui.BeginChild) ~= "function" then return false end
-    if Vec2 then return pcall(ImGui.BeginChild, tostring(id), Vec2(num(w,200), num(h,200)), true) or pcall(ImGui.BeginChild, tostring(id), Vec2(num(w,200), num(h,200)), true, 0) end
+    if Vec2 then 
+        local ok = pcall(ImGui.BeginChild, tostring(id), Vec2(num(w,200), num(h,200)), true)
+        if not ok then pcall(ImGui.BeginChild, tostring(id), Vec2(num(w,200), num(h,200)), true, 0) end
+        return ok
+    end
     return pcall(ImGui.BeginChild, tostring(id), num(w,200), num(h,200), true)
 end
 
