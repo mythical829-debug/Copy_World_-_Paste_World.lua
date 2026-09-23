@@ -9,11 +9,6 @@ end
 if not Vec2 and type(_G.Vec2) == "function" then Vec2 = _G.Vec2 end
 if not Vec2 and type(_G.ImVec2) == "function" then Vec2 = _G.ImVec2 end
 
-local AutoResizeFlag = 64
-if type(ImGui) == "table" and type(ImGui.WindowFlags) == "table" and ImGui.WindowFlags.AlwaysAutoResize then
-    AutoResizeFlag = ImGui.WindowFlags.AlwaysAutoResize
-end
-
 CustomUI.Themes = {
     dark = {
         WindowBg = 0xFF0A0A0A, ChildBg = 0xFF121212, PopupBg = 0xFF121212,
@@ -55,7 +50,9 @@ function CustomUI.New(config)
     self.size = config.size or {520, 380}
     self.visible = config.visible ~= false
     self.opened = true
-    self.flags = config.flags or AutoResizeFlag
+    
+    -- FIX: Hapus AutoResize di Window utama agar tidak goyang saat ganti title
+    self.flags = config.flags or 0
     
     if type(config.theme) == "string" then
         self.theme = CustomUI.Themes[config.theme] or CustomUI.Theme
@@ -133,13 +130,16 @@ function CustomUI:Begin()
         if Vec2 and ImGui.StyleVar.ItemSpacing and pcall(ImGui.PushStyleVar, ImGui.StyleVar.ItemSpacing, Vec2(8, 6)) then sv = sv + 1 end
     end
     
+    if type(ImGui.SetNextWindowSize) == "function" and Vec2 then
+        pcall(ImGui.SetNextWindowSize, Vec2(safeNum(self.size[1], 520), safeNum(self.size[2], 380)), (ImGui.Cond and ImGui.Cond.FirstUseEver) or 1)
+    end
+    
     if type(ImGui.Begin) ~= "function" then 
         if sv > 0 and type(ImGui.PopStyleVar) == "function" then pcall(ImGui.PopStyleVar, sv) end
         self:PopTheme(tCount) 
         return false, false, tCount, sv 
     end
     
-    -- FIX: Gunakan ID unik di belakang title agar ganti title tidak mereset UI
     local winId = self.title .. "##MythicalUI"
     local ok, opened = pcall(ImGui.Begin, winId, self.opened, self.flags)
     if not ok then ok, opened = pcall(ImGui.Begin, winId, self.opened) end
@@ -298,10 +298,13 @@ function CustomUI:FeatureList(id, features)
     end
 end
 
--- Frame / Bingkai (Child Window)
+-- Frame / Bingkai (AutoResize Ada Di Sini)
 function CustomUI:BeginFrame(title, w, h)
     if type(ImGui.BeginChild) == "function" and Vec2 then
-        local ok = pcall(ImGui.BeginChild, tostring(title), Vec2(safeNum(w, 200), safeNum(h, 100)), true, 0)
+        -- FIX: Gunakan 0,0 untuk auto-resize child frame jika w/h tidak diisi
+        local cw = (w == 0) and 0 or safeNum(w, 200)
+        local ch = (h == 0) and 0 or safeNum(h, 100)
+        local ok = pcall(ImGui.BeginChild, tostring(title), Vec2(cw, ch), true, 0)
         if ok then
             self:ColoredText(tostring(title), 0xFFFF5050)
             self:Separator()
